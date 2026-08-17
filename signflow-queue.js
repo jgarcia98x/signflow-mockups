@@ -25,7 +25,18 @@
   'use strict';
 
   var RES_KEY = 'sf_resources_v1';   /* shared with signflow-engine.js */
-  var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  /* Week shape lives in SFStore so queue and engine cannot drift. Read
+     lazily via days() — SFStore may not be defined when this file is
+     evaluated, only when build() runs. */
+  function days() {
+    return (global.SFStore && global.SFStore.DAYS)
+      || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  }
+  function dayDefault(d) {
+    return (global.SFStore && global.SFStore.defaultAvail)
+      ? global.SFStore.defaultAvail(d)
+      : 'free';
+  }
 
   function resState() {
     try { return JSON.parse(localStorage.getItem(RES_KEY) || '{}'); }
@@ -37,11 +48,20 @@
 
   /* Days where at least one crew member is not busy. This is the honest
      basis for "these can run together": real capacity, edited by Peter. */
+  function availOf(st, who, day) {
+    var v = (st[who] || {})[day];
+    return v || dayDefault(day);
+  }
+
+  /* 'off' is excluded as well as 'busy': a day nobody works is not free
+     capacity. Without this, adding Sat/Sun would have handed the board two
+     free crew-days that do not exist. */
   function freeDays() {
     var st = resState();
-    return DAYS.filter(function (d) {
+    return days().filter(function (d) {
       return CREW.some(function (c) {
-        return ((st[c] || {})[d] || 'free') !== 'busy';
+        var v = availOf(st, c, d);
+        return v !== 'busy' && v !== 'off';
       });
     });
   }
@@ -93,15 +113,47 @@
       return b.expected - a.expected;
     });
 
+    /* ── Capacity is a different question from priority ────────────────
+       These lists used to filter `ranked`, which comes from liveScores() and
+       deliberately excludes won jobs. But SFStore.isWon() counts the Install
+       stage as won — correct for "should I chase this?", wrong for "is my
+       crew tied up?", because Install is exactly when the crew is on site.
+       Result: Install jobs vanished from capacity and the board under-reported
+       contention.
+
+       So capacity reads the store directly and drops only work that consumes
+       nothing (Complete / cold / lost), ordered by the ranking where known.
+       "Won" and "consumes no resources" are different predicates.
+
+       Reconciliation rule: onSite + atVendor + office must equal the live
+       job count. If those three do not sum to `liveJobs`, one of them is
+       lying. */
+    var rankPos = {};
+    ranked.forEach(function (r, i) { rankPos[r.id] = i; });
+
+    var liveAll = S.all().filter(function (j) {
+      return j.stage !== 'Complete' && j.priority !== 'cold' && j.priority !== 'lost'
+        && !j.done;
+    }).sort(function (a, b) {
+      var ia = rankPos[a.id], ib = rankPos[b.id];
+      if (ia == null && ib == null) return 0;
+      if (ia == null) return 1;
+      if (ib == null) return -1;
+      return ia - ib;
+    });
+
+    var waitingAll = liveAll.filter(function (j) { return atVendor(j); });
+    var crewAll    = liveAll.filter(function (j) { return !atVendor(j) && needsCrew(j); });
+    var officeAll  = liveAll.filter(function (j) { return !atVendor(j) && !needsCrew(j); });
+
+    /* Priority-scoped views stay ranked-derived — those answer "what should
+       I do next", where excluding won work is right. */
     var waiting = ranked.filter(function (r) {
       var j = S.get(r.id) || {};
       return atVendor(j);
     });
 
-    var crewJobs = ranked.filter(function (r) {
-      var j = S.get(r.id) || {};
-      return !atVendor(j) && needsCrew(j);
-    });
+    var crewJobs = crewAll;
 
     var officeJobs = ranked.filter(function (r) {
       var j = S.get(r.id) || {};
@@ -116,12 +168,14 @@
     var maxFree = 0;
     free.forEach(function (day) {
       var n = CREW.filter(function (c) {
-        return ((st[c] || {})[day] || 'free') !== 'busy';
+        var v = availOf(st, c, day);
+        return v !== 'busy' && v !== 'off';
       }).length;
       if (n > maxFree) maxFree = n;
     });
 
-    var parallelNow = Math.min(maxFree, crewJobs.length);
+    /* Bounded by real free crew AND by how many jobs actually need them. */
+    var parallelNow = Math.min(maxFree, crewAll.length);
 
     return {
       today: crewJobs.slice(0, 3),
@@ -130,9 +184,15 @@
       freeDays: free,
       maxFreeCrew: maxFree,
       parallelNow: parallelNow,
+      /* Capacity-scoped counts — these reconcile against liveJobs. */
+      needsOnSite: crewAll.length,
+      atVendorCount: waitingAll.length,
+      officeCount: officeAll.length,
+      liftJobs: crewAll.filter(function (j) { return j.needs === 'lift'; }).length,
+      liveJobs: liveAll.length,
       /* Office work and vendor-side jobs genuinely run alongside crew
          work — they compete for nothing. */
-      trueParallel: officeJobs.length + waiting.length,
+      trueParallel: officeAll.length + waitingAll.length,
       all: ranked,
       live: live,
       stalling: live.stalling
@@ -145,7 +205,7 @@
     needsCrew: needsCrew,
     atVendor: atVendor,
     CREW: CREW,
-    DAYS: DAYS
+    get DAYS() { return days(); }
   };
 })(window);
 

@@ -37,6 +37,26 @@
   var LS_HIST = 'sf-store-history';   /* real stage transitions  */
 
   /* Pipeline order. Index matters: progress is measured by position. */
+  /* ── Week shape ─────────────────────────────────────────────────────
+     Single source of truth. DAYS was duplicated in signflow-queue.js and
+     signflow-engine.js as ['Mon'..'Fri'], so adding the weekend meant two
+     places could drift.
+
+     Weekends default to 'off', NOT 'free'. 'off' means "not a working day",
+     which is a different statement from 'busy' ("booked"). Defaulting them
+     free would have silently added two crew-days of phantom capacity and
+     inflated every parallel figure on the board — capacity should only grow
+     when someone explicitly says the crew is working that day. Clicking a
+     weekend dot opts it in. */
+  var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  var WEEKEND = ['Sat', 'Sun'];
+  /* Two letters where one would be ambiguous — d[0] rendered Sat and Sun
+     as an identical "S". */
+  var DAY_LABEL = { Mon:'M', Tue:'T', Wed:'W', Thu:'Th', Fri:'F', Sat:'Sa', Sun:'Su' };
+
+  function isWeekend(d) { return WEEKEND.indexOf(d) !== -1; }
+  function defaultAvail(d) { return isWeekend(d) ? 'off' : 'free'; }
+
   var STAGES = ['New Inquiry', 'Quote', 'Design', 'Approval',
                 'Fabrication', 'Install', 'Complete'];
 
@@ -50,7 +70,7 @@
      pinning the clock keeps overdue/soon colouring stable rather than
      drifting as real time passes. Swap to `new Date()` when this is
      wired to live data. */
-  var TODAY = new Date(2026, 7, 3);   /* Aug 3 2026, month is 0-based */
+  var TODAY = new Date();   /* live clock — always current */
 
   function today() { return new Date(TODAY.getTime()); }
 
@@ -75,6 +95,50 @@
     return new Date(p[0], p[1] - 1, p[2]);
   }
 
+  /* ── Seed dates follow the clock ────────────────────────────────────
+     TODAY was pinned to Aug 3 2026 while the page header printed the real
+     date, so from Aug 4 onward the app contradicted itself on screen: the
+     header said one date, every badge and velocity figure assumed another.
+     Five cards showed stale overdue warnings.
+
+     TODAY is now the live clock, and the absolute seed dates below are
+     shifted by the whole number of days between the anchor they were written
+     against and today. Relative distances are preserved exactly — a job due
+     in 1 day stays due in 1 day, a 21-day-old quote stays 21 days old — so
+     the board reads correctly on any date it is opened.
+
+     Applied to seed values only, before saved edits merge, so a date entered
+     by hand is never rewritten. */
+  var SEED_ANCHOR = new Date(2026, 7, 3);   /* dates below authored for Aug 3 2026 */
+
+  function seedShiftDays() {
+    var t = today(), a = SEED_ANCHOR;
+    var t0 = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+    var a0 = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+    return Math.round((t0 - a0) / 86400000);
+  }
+
+  function shiftISO(s, days) {
+    if (!s || !days) return s;
+    var d = parseISO(s);
+    if (!d) return s;
+    d.setDate(d.getDate() + days);
+    var m = String(d.getMonth() + 1), dd = String(d.getDate());
+    return d.getFullYear() + '-' + (m.length < 2 ? '0' + m : m)
+      + '-' + (dd.length < 2 ? '0' + dd : dd);
+  }
+
+  var SEED_DATE_KEYS = ['due', 'started', 'entered', 'won', 'lost'];
+
+  function shiftSeedDates(job, days) {
+    if (!days) return job;
+    var out = Object.assign({}, job);
+    SEED_DATE_KEYS.forEach(function (k) {
+      if (out[k]) out[k] = shiftISO(out[k], days);
+    });
+    return out;
+  }
+
   function daysBetween(a, b) {
     if (!a || !b) return null;
     return Math.round((b - a) / 86400000);
@@ -86,21 +150,21 @@
      is when the job landed in its current stage; `started` is when it
      first appeared as a New Inquiry. */
   var SEED = [
-    { name:"Kohl's #0394 — Pylon Reface",       client:"Kohl's Corporation",        stage:'Install',     type:'outdoor', value:19500, due:'2026-08-04', priority:'urgent', started:'2026-06-18', entered:'2026-08-01' },
-    { name:'Heritage Bank — Branch Refresh',     client:'Heritage Community Bank',   stage:'Fabrication', type:'indoor',  value:58000, due:'2026-08-08', priority:'urgent', started:'2026-06-02', entered:'2026-07-28' },
-    { name:'Summit Tech Park — Monument Sign',   client:'Summit Tech Park LLC',      stage:'Fabrication', type:'outdoor', value:41000, due:'2026-08-08', priority:'urgent', started:'2026-06-10', entered:'2026-07-25' },
-    { name:'La Paloma Restaurant — Exterior',    client:'La Paloma Group',           stage:'Install',     type:'outdoor', value:11200, due:'2026-08-05', priority:'high',   started:'2026-07-08', entered:'2026-08-02' },
-    { name:'Prairie Wind Storage — Exterior',    client:'Prairie Wind Self Storage', stage:'Approval',    type:'outdoor', value:22100, due:'2026-08-07', priority:'normal', started:'2026-06-28', entered:'2026-07-30' },
-    { name:'Village Tap — Blade Sign',           client:'The Village Tap',           stage:'Approval',    type:'outdoor', value:9200,  due:'2026-08-01', priority:'urgent', started:'2026-06-20', entered:'2026-07-18' },
-    { name:'Northside Gym — Vehicle Wrap',       client:'Northside Fitness',         stage:'Fabrication', type:'indoor',  value:6400,  due:'2026-08-06', priority:'high',   started:'2026-07-12', entered:'2026-07-29' },
-    { name:'Walgreens #4712 — Façade',           client:'Walgreens (National)',      stage:'Fabrication', type:'outdoor', value:24800, due:'2026-08-12', priority:'normal', started:'2026-06-05', entered:'2026-07-22' },
-    { name:'Downtown Diner — Channel Letters',   client:'Main St. Restaurant Group', stage:'Quote',       type:'indoor',  value:7200,  due:'2026-08-10', priority:'high',   started:'2026-07-25', entered:'2026-07-27' },
-    { name:'Riverside Auto — Pylon Sign',        client:'Riverside Automotive',      stage:'Quote',       type:'outdoor', value:18400, due:'2026-08-05', priority:'urgent', started:'2026-07-20', entered:'2026-07-24' },
-    { name:'Westside Fitness',                   client:'Westside Fitness',          stage:'New Inquiry', type:'indoor',  value:null,  due:null,         priority:'normal', started:'2026-08-03', entered:'2026-08-03' },
-    { name:'Joliet Tire & Auto',                 client:'Walk-in',                   stage:'New Inquiry', type:'outdoor', value:null,  due:null,         priority:'normal', started:'2026-08-01', entered:'2026-08-01' },
-    { name:'Bricktown Brewery — Outdoor Sign',   client:'Bricktown Craft Brewing',   stage:'Quote',       type:'outdoor', value:8600,  due:'2026-07-12', priority:'cold',   started:'2026-05-30', entered:'2026-06-14' },
-    { name:'Valley Fresh Grocery — Storefront',  client:'Valley Fresh Foods',        stage:'Quote',       type:'outdoor', value:14300, due:'2026-06-28', priority:'lost',   started:'2026-05-12', entered:'2026-05-28' },
-    { name:'Speedway #1188 — LED Retrofit',      client:'Speedway LLC',              stage:'Complete',    type:'indoor',  value:34100, due:'2026-07-30', priority:'done',   started:'2026-05-20', entered:'2026-07-26' }
+    { name:"Kohl's #0394 — Pylon Reface",       client:"Kohl's Corporation",        stage:'Install',     type:'outdoor', value:19500, due:'2026-08-04', priority:'urgent', started:'2026-06-18', entered:'2026-08-01', needs:'lift', vstatus:'' },
+    { name:'Heritage Bank — Branch Refresh',     client:'Heritage Community Bank',   stage:'Fabrication', type:'indoor',  value:58000, due:'2026-08-08', priority:'urgent', started:'2026-06-02', entered:'2026-07-28', needs:'crew', vstatus:'out' },
+    { name:'Summit Tech Park — Monument Sign',   client:'Summit Tech Park LLC',      stage:'Fabrication', type:'outdoor', value:41000, due:'2026-08-08', priority:'urgent', started:'2026-06-10', entered:'2026-07-25', needs:'crew', vstatus:'' },
+    { name:'La Paloma Restaurant — Exterior',    client:'La Paloma Group',           stage:'Install',     type:'outdoor', value:11200, due:'2026-08-05', priority:'high',   started:'2026-07-08', entered:'2026-08-02', needs:'crew', vstatus:'' },
+    { name:'Prairie Wind Storage — Exterior',    client:'Prairie Wind Self Storage', stage:'Approval',    type:'outdoor', value:22100, due:'2026-08-07', priority:'normal', started:'2026-06-28', entered:'2026-07-30', needs:'office', vstatus:'' },
+    { name:'Village Tap — Blade Sign',           client:'The Village Tap',           stage:'Approval',    type:'outdoor', value:9200,  due:'2026-08-01', priority:'urgent', started:'2026-06-20', entered:'2026-07-18', needs:'office', vstatus:'' },
+    { name:'Northside Gym — Vehicle Wrap',       client:'Northside Fitness',         stage:'Fabrication', type:'indoor',  value:6400,  due:'2026-08-06', priority:'high',   started:'2026-07-12', entered:'2026-07-29', needs:'crew', vstatus:'out' },
+    { name:'Walgreens #4712 — Façade',           client:'Walgreens (National)',      stage:'Fabrication', type:'outdoor', value:24800, due:'2026-08-12', priority:'normal', started:'2026-06-05', entered:'2026-07-22', needs:'lift', vstatus:'' },
+    { name:'Downtown Diner — Channel Letters',   client:'Main St. Restaurant Group', stage:'Quote',       type:'indoor',  value:7200,  due:'2026-08-10', priority:'high',   started:'2026-07-25', entered:'2026-07-27', needs:'office', vstatus:'' },
+    { name:'Riverside Auto — Pylon Sign',        client:'Riverside Automotive',      stage:'Quote',       type:'outdoor', value:18400, due:'2026-08-05', priority:'urgent', started:'2026-07-20', entered:'2026-07-24', needs:'office', vstatus:'' },
+    { name:'Westside Fitness',                   client:'Westside Fitness',          stage:'New Inquiry', type:'indoor',  value:null,  due:null,         priority:'normal', started:'2026-08-03', entered:'2026-08-03', needs:'office', vstatus:'' },
+    { name:'Joliet Tire & Auto',                 client:'Walk-in',                   stage:'New Inquiry', type:'outdoor', value:null,  due:null,         priority:'normal', started:'2026-08-01', entered:'2026-08-01', needs:'office', vstatus:'' },
+    { name:'Bricktown Brewery — Outdoor Sign',   client:'Bricktown Craft Brewing',   stage:'Quote',       type:'outdoor', value:8600,  due:'2026-07-12', priority:'cold',   started:'2026-05-30', entered:'2026-06-14', needs:'office', vstatus:'' },
+    { name:'Valley Fresh Grocery — Storefront',  client:'Valley Fresh Foods',        stage:'Quote',       type:'outdoor', value:14300, due:'2026-06-28', priority:'lost',   started:'2026-05-12', entered:'2026-05-28', needs:'office', vstatus:'' },
+    { name:'Speedway #1188 — LED Retrofit',      client:'Speedway LLC',              stage:'Complete',    type:'indoor',  value:34100, due:'2026-07-30', priority:'done',   started:'2026-05-20', entered:'2026-07-26', needs:'crew', vstatus:'' }
   ];
 
   /* Closed jobs from earlier in the year. The live board only shows
@@ -156,9 +220,12 @@
   /* ── Build the working set: seed + saved edits ─────────────────── */
   function all() {
     var edits = lsGet(LS_JOBS, {});
+    var shift = seedShiftDays();
     var out = SEED.map(function (j) {
       var id = slug(j.name);
-      var rec = Object.assign({ id: id, seeded: true, source: SOURCES[id] || '' }, j);
+      /* Shift the seed's dates, then let saved edits win. */
+      var rec = Object.assign({ id: id, seeded: true, source: SOURCES[id] || '' },
+                              shiftSeedDates(j, shift));
       if (edits[id]) Object.assign(rec, edits[id]);
       rec.dueDate = parseISO(rec.due);
       return rec;
@@ -254,7 +321,19 @@
 
   global.SFStore = {
     STAGES: STAGES, WIN_STAGE: WIN_STAGE, WIN_INDEX: WIN_INDEX,
-    SEED_CLOSED: SEED_CLOSED, SEED_LOST: SEED_LOST,
+    DAYS: DAYS, WEEKEND: WEEKEND, DAY_LABEL: DAY_LABEL,
+    isWeekend: isWeekend, defaultAvail: defaultAvail,
+    /* Shifted like live jobs — signflow-conversions.js reads these raw for
+       win/loss history, so an unshifted archive would freeze while the board
+       moved. Getters so the shift recomputes across midnight. */
+    get SEED_CLOSED() {
+      var s = seedShiftDays();
+      return SEED_CLOSED.map(function (j) { return shiftSeedDates(j, s); });
+    },
+    get SEED_LOST() {
+      var s = seedShiftDays();
+      return SEED_LOST.map(function (j) { return shiftSeedDates(j, s); });
+    },
     today: today, slug: slug, iso: iso, parseISO: parseISO,
     daysBetween: daysBetween,
     all: all, get: get, update: update, createJob: createJob,

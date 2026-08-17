@@ -167,20 +167,31 @@
   var CREW=['Mike Reyes','Dave Kowalski','Sarah Mitchell','Install Crew A'];
   var CREW_ROLE={'Mike Reyes':'Lead Installer','Dave Kowalski':'Electrician / Installer','Sarah Mitchell':'Project Manager','Install Crew A':'Install Team'};
   var VENDORS=['Midwest Steel Fab','Precision Wide-Format','Joliet Permits Office'];
-  var DAYS=['Mon','Tue','Wed','Thu','Fri'];
+  /* Week shape comes from SFStore (single source of truth); these fallbacks
+     only apply if the store failed to load. */
+  function DAYS_(){ return (window.SFStore&&SFStore.DAYS)||['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; }
+  function dayLabel(d){ return ((window.SFStore&&SFStore.DAY_LABEL)||{})[d]||d[0]; }
+  function isWknd(d){ return window.SFStore&&SFStore.isWeekend?SFStore.isWeekend(d):(d==='Sat'||d==='Sun'); }
+  function availDefault(d){ return window.SFStore&&SFStore.defaultAvail?SFStore.defaultAvail(d):'free'; }
   var CYCLE=['free','partial','busy'];
-  var CYCLE_COLOR={free:'#5FA97A',partial:'#D9A441',busy:'#C2453F'};
+  /* Weekends cycle through 'off' too, so a Saturday install can be opened up
+     and then closed again. Weekdays never become 'off'. */
+  var CYCLE_WKND=['off','free','partial','busy'];
+  /* Dot colour is owned by signflow-calm.css via [data-state] !important
+     rules — deliberately: "A wall of identical green = zero information.
+     Free days go faint; only partial/busy carry colour." Nothing here sets
+     colour; 'off' is styled in that stylesheet alongside the other states. */
   var resState={};
   try { resState=JSON.parse(localStorage.getItem(RES_KEY)||'{}'); } catch(e){ resState={}; }
-  function resGet(who,day){ return (resState[who]&&resState[who][day])||'free'; }
+  function resGet(who,day){ return (resState[who]&&resState[who][day])||availDefault(day); }
   function resSet(who,day,val){ if(!resState[who])resState[who]={}; resState[who][day]=val; try{localStorage.setItem(RES_KEY,JSON.stringify(resState));}catch(e){} }
-  function crewBusyCount(){ var n=0; CREW.forEach(function(c){ DAYS.forEach(function(d){ if(resGet(c,d)==='busy')n++; }); }); return n; }
+  function crewBusyCount(){ var n=0; CREW.forEach(function(c){ DAYS_().forEach(function(d){ if(resGet(c,d)==='busy')n++; }); }); return n; }
 
   function resRow(who, role){
-    var dots=DAYS.map(function(d){
+    var dots=DAYS_().map(function(d){
       var v=resGet(who,d);
-      return '<span class="sf-res-dot" data-who="'+esc(who)+'" data-day="'+d+'" data-state="'+v+'" title="'+d+': '+v+'" '
-        +'style="width:15px;height:15px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:8px;font-weight:700;">'+d[0]+'</span>';
+      return '<span class="sf-res-dot'+(isWknd(d)?' sf-res-wknd':'')+'" data-who="'+esc(who)+'" data-day="'+d+'" data-state="'+v+'" title="'+d+': '+v+'" '
+        +'style="width:15px;height:15px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:8px;font-weight:700;">'+dayLabel(d)+'</span>';
     }).join('');
     return '<div class="sf-res-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05);">'
       +'<div style="min-width:0;"><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(who)+'</div>'
@@ -201,7 +212,7 @@
       +CREW.map(function(c){ return resRow(c, CREW_ROLE[c]); }).join('')
       +'<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.32);font-weight:700;margin:10px 0 4px;">Vendors</div>'
       +VENDORS.map(function(v){ return resRow(v, ''); }).join('')
-      +'<div style="font-size:10px;color:rgba(255,255,255,0.35);margin-top:9px;">Click a day to cycle free → partial → busy. Feeds Smart Queue.</div>'
+      +'<div style="font-size:10px;color:rgba(255,255,255,0.35);margin-top:9px;line-height:1.5;">Click a day to cycle <span style="color:rgba(255,255,255,0.55);">free</span> → <span style="color:rgba(240,200,120,0.95);">partial</span> → <span style="color:rgba(255,150,140,0.95);">busy</span>. Sa/Su start as <span style="color:rgba(255,255,255,0.45);">off</span> (not a working day) and add no capacity until you click them. Feeds Smart Queue.</div>'
       +'</div>';
     sidebar.insertBefore(box, sidebar.firstChild);
 
@@ -212,7 +223,10 @@
     box.addEventListener('click', function(e){
       var dot=e.target.closest('.sf-res-dot'); if(!dot) return;
       var who=dot.getAttribute('data-who'), day=dot.getAttribute('data-day');
-      var cur=resGet(who,day), nv=CYCLE[(CYCLE.indexOf(cur)+1)%CYCLE.length];
+      var cyc=isWknd(day)?CYCLE_WKND:CYCLE;
+      var cur=resGet(who,day);
+      var i=cyc.indexOf(cur);
+      var nv=cyc[(i<0?0:i+1)%cyc.length];
       resSet(who,day,nv); dot.setAttribute('data-state',nv); dot.title=day+': '+nv;
       reRankQueue();
       T(who+' · '+day+': '+nv,'👷');
@@ -251,7 +265,19 @@
       set('sfimp-closed', closed?money(closed):'$0');
       set('sfimp-revived', String(revived));
       set('sfimp-days', daysSaved);
-      set('sfimp-parallel', String(parallel||4));
+      /* Was String(parallel||4) — when the real count was 0 this printed a
+         hardcoded "4", inventing capacity out of nothing. Read the same
+         engine the Smart Queue callout uses so the two can never disagree,
+         and fall back to the DOM count (including a real 0) rather than a
+         constant. */
+      var parallelShown = parallel;
+      try {
+        if (window.SFQueue && window.SFQueue.build) {
+          var q = window.SFQueue.build();
+          if (q && typeof q.parallelNow === 'number') parallelShown = q.parallelNow;
+        }
+      } catch (e) { /* keep the DOM count */ }
+      set('sfimp-parallel', String(parallelShown));
     }
   };
   window.SFImpact=SFImpact;
