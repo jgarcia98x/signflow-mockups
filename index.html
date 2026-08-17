@@ -6,13 +6,13 @@
   <title>SignFlow — Job Pipeline</title>
   <!-- Drag layer + job persistence must exist before the inline board
        scripts run, so they load here rather than at the foot of the page. -->
-  <script src="signflow-store.js?v=202608171831"></script>
-<script src="signflow-dnd.js?v=202608171831"></script>
-  <script src="signflow-jobs.js?v=202608171831"></script>
+  <script src="signflow-store.js?v=202608171840"></script>
+<script src="signflow-dnd.js?v=202608171840"></script>
+  <script src="signflow-jobs.js?v=202608171840"></script>
   <!-- Must load before the inline page script: Slow Season Outreach reads
        SFConversions.dormant(). It used to sit after the inline block, so
        dormant() was undefined and the sidebar silently rendered empty. -->
-  <script src="signflow-conversions.js?v=202608171831"></script>
+  <script src="signflow-conversions.js?v=202608171840"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1818,11 +1818,27 @@
   function updateJobCount() {
     var countEl = document.querySelector('.job-count');
     if (!countEl) return;
-    var total = document.querySelectorAll('.card').length;
-    var newI  = (document.querySelectorAll('.col') [0] || {querySelectorAll:function(){return[];}}).querySelectorAll('.card').length;
+    /* This said "11 active" while the stats bar said 12, because the two
+       counted different things and both called it "active": this one
+       counted every card except the New Inquiry column (so Complete was
+       in, and new inquiries were out), while the stats bar counts real
+       open work. Two numbers under one word is a design bug, so this now
+       excludes Complete and names the New Inquiry figure honestly.
+       Board-derived, because it describes the columns Peter is looking at. */
+    var cards = [].slice.call(document.querySelectorAll('.board .card'));
+    var newI  = (document.querySelectorAll('.col')[0]
+                  || { querySelectorAll: function () { return []; } })
+                .querySelectorAll('.card').length;
+    var done  = cards.filter(function (c) {
+      var col = c.closest('.col');
+      var t = col ? (col.querySelector('.col-title') || {}).textContent : '';
+      return c.classList.contains('done') || (t || '').trim() === 'Complete';
+    }).length;
+    var active = cards.length - newI - done;
     var dz = (window.SFConversions && window.SFConversions.dormant)
       ? window.SFConversions.dormant().length : 0;
-    countEl.textContent = newI + ' new · ' + (total - newI) + ' active'
+    countEl.textContent = newI + ' new · ' + active + ' in progress'
+      + (done ? ' · ' + done + ' complete' : '')
       + (dz ? ' · ' + dz + ' dormant' : '');
     updateStatsBar();
   }
@@ -3489,10 +3505,10 @@
   /* calmer parallel grouping: soften the indented connector items */
   .ai-sidebar .queue-item[style*="border-left"]{ background:rgba(217,164,65,0.05); border-radius:0 10px 10px 0; }
 </style>
-<link rel="stylesheet" href="signflow-calm.css?v=202608171831">
-<script src="signflow-queue.js?v=202608171831"></script>
-<script src="signflow-engine.js?v=202608171831"></script>
-  <script src="signflow-hint.js?v=202608171831"></script>
+<link rel="stylesheet" href="signflow-calm.css?v=202608171840">
+<script src="signflow-queue.js?v=202608171840"></script>
+<script src="signflow-engine.js?v=202608171840"></script>
+  <script src="signflow-hint.js?v=202608171840"></script>
 
 </body>
 </html>
