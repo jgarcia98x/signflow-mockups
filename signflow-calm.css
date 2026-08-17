@@ -330,6 +330,35 @@ html.density-compact .card .card-row:empty{ display: none !important; }
   background: rgba(229,83,75,0.20) !important;
   color: rgba(255,150,140,0.95) !important;
 }
+/* ── Narrow sidebars: stack the name above the dots ────────────────
+   Going from 5 to 7 days pushed the dot strip to 206px inside a 231px row,
+   leaving 17px for the name — every crew member rendered as a single
+   truncated letter with the role text jammed against the dots ("Mike R.."
+   became "M.."). Measured on iPad landscape, not eyeballed.
+
+   The row is two competing demands on one line, so below the width where
+   both fit, it becomes two lines: name gets the full width, dots sit under
+   it. Nobody loses information. Desktop is unaffected — it has the room. */
+@media (max-width: 1280px) {
+  .sf-res-row{
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 7px !important;
+  }
+  .sf-res-row > div:first-child{ min-width: 0 !important; }
+  /* Release the ellipsis clamp now that the name owns the whole line. */
+  .sf-res-row > div:first-child > div{
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+  /* Dot strip spreads across the freed width instead of hugging the edge. */
+  .sf-res-row > div:last-child{
+    justify-content: space-between !important;
+    width: 100% !important;
+  }
+}
+
 /* Sat/Sun default to "off" = not a working day, which is different from
    "busy" (booked). Fainter than free with a dashed ring so it reads "not
    scheduled" rather than "available". Click to open a weekend install.
