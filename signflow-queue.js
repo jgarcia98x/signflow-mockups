@@ -153,7 +153,48 @@
       return atVendor(j);
     });
 
-    var crewJobs = crewAll;
+    /* ── The numbered work order ───────────────────────────────────────
+       This was `crewJobs = crewAll`: raw SFStore records, which carry none
+       of the display fields the renderer prints. It still rendered, so it
+       read as working — but every row showed "$0" and "scored undefined%",
+       and the order was capacity order, not urgency order.
+
+       It cannot simply filter `ranked` either. `ranked` comes from
+       liveScores(), which excludes won work — and Install counts as won.
+       Filtering would silently drop a job installing today, which is
+       precisely today's work order. Same trap as the capacity fix above.
+
+       So: membership from `crewAll` (crew is genuinely tied up during
+       Install), display fields from the scored row where one exists. A won
+       job has no conversion score — there is nothing left to convert — so
+       it is marked `won` and the renderer shows its contract value instead
+       of inventing a probability for it. */
+    var scoredById = {};
+    ranked.forEach(function (r) { scoredById[r.id] = r; });
+
+    function displayRow(j) {
+      var hit = scoredById[j.id];
+      if (hit) return hit;
+      /* Won/on-site work: derive only the deadline facts, which are real. */
+      var d = j.dueDate || S.parseISO(j.due);
+      var dtd = d ? S.daysBetween(S.today(), d) : null;
+      return {
+        id: j.id, name: j.name, client: j.client, stage: j.stage,
+        value: j.value || 0, due: j.due || null,
+        daysToDue: dtd,
+        dueState: dtd === null ? null
+                : dtd < 0 ? 'overdue' : dtd <= 3 ? 'imminent'
+                : dtd <= 7 ? 'soon' : 'later',
+        won: true, reasons: []
+      };
+    }
+
+    var crewJobs = crewAll.map(displayRow).sort(function (a, b) {
+      var ta = tier(a), tb = tier(b);
+      if (ta !== tb) return ta - tb;
+      if (ta <= 3 && a.daysToDue !== b.daysToDue) return a.daysToDue - b.daysToDue;
+      return (b.expected || b.value || 0) - (a.expected || a.value || 0);
+    });
 
     var officeJobs = ranked.filter(function (r) {
       var j = S.get(r.id) || {};
@@ -233,7 +274,9 @@
     /* "22d late" and "2d" must not be told apart by colour alone —
        same chip, opposite meaning is a real misread risk, and colour
        is the one channel some people do not have. Spell out tense. */
+    /* "in 0d" is not how anyone says "today". */
     if (r.dueState === 'overdue')       { c = '#E2726B'; t = Math.abs(r.daysToDue) + 'd late'; }
+    else if (r.daysToDue === 0)         { c = '#D9A441'; t = 'today'; }
     else if (r.dueState === 'imminent') { c = '#D9A441'; t = 'in ' + r.daysToDue + 'd'; }
     else if (r.dueState === 'soon')     { c = 'rgba(255,255,255,0.5)'; t = 'in ' + r.daysToDue + 'd'; }
     else return '';
@@ -258,8 +301,12 @@
       +   '<button class="qi-why" aria-expanded="false">Why?<em class="chevron">▾</em></button>'
       + '</div>'
       + '<div class="qi-explain"><div class="qi-explain-inner">'
-      +   (opts.why || (r.stage + ' · ' + money(r.value) + ' · scored ' + r.score + '%'
-                        + (reasons ? ' — ' + reasons : '')))
+      +   (opts.why || (r.won
+            /* Already won — no conversion score exists, so don't print one. */
+            ? (r.stage + ' · ' + money(r.value) + ' · won, crew on site'
+                + (reasons ? ' — ' + reasons : ''))
+            : (r.stage + ' · ' + money(r.value) + ' · scored ' + r.score + '%'
+                + (reasons ? ' — ' + reasons : ''))))
       + '</div></div>'
       + '</div>';
   }
@@ -395,7 +442,10 @@
     q.today.forEach(function (r, i) {
       html += item(r, {
         num: String(i + 1),
-        badge: '<span class="qi-seq">' + dueTag(r) + money(r.expected) + '</span>',
+        /* Expected value is value × win-likelihood. A won job has no such
+           number, so show the contract value it actually represents. */
+        badge: '<span class="qi-seq">' + dueTag(r)
+             + money(r.won ? r.value : r.expected) + '</span>',
         style: i ? 'margin-top:6px;' : ''
       });
     });
