@@ -786,7 +786,11 @@ header{
    badge now sits on its own line under the role, which frees the full
    width for the name and reads more calmly besides.
    ═══════════════════════════════════════════════════════════════════ */
-.schedule-grid{ grid-template-columns: 212px repeat(5, 1fr) !important; }
+/* 7 day columns (Mon–Sun). This file loads after the page's own <style>
+   and uses !important, so it silently pinned the grid at 5 columns and
+   wrapped Saturday/Sunday onto a second row. Keep the widened label column;
+   match the real week. */
+.schedule-grid{ grid-template-columns: 212px repeat(7, 1fr) !important; }
 
 .crew-label{ flex-wrap: wrap !important; row-gap: 6px !important; }
 .crew-info{ flex: 1 1 auto !important; min-width: 0 !important; }
@@ -804,7 +808,8 @@ header{
 }
 
 @media (max-width: 1024px){
-  .schedule-grid{ grid-template-columns: 190px repeat(5, 1fr) !important; }
+  /* Also 7 — the tablet/phone override had its own hardcoded 5. */
+  .schedule-grid{ grid-template-columns: 190px repeat(7, 1fr) !important; }
 }
 
 /* ═══ DEEP-LINK ARRIVAL FLASH ═══════════════════════════════════════

@@ -270,7 +270,7 @@
 
     .schedule-grid {
       display: grid;
-      grid-template-columns: 190px repeat(5, 1fr);
+      grid-template-columns: 190px repeat(7, 1fr);
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
@@ -293,6 +293,21 @@
       color: var(--text-dim);
     }
 
+    /* Weekend columns: visibly present but clearly not standard working
+       days, so the week reads as Mon–Sun without implying Sat/Sun capacity
+       that doesn't exist. Weekend installs happen, so the columns are real
+       and bookable — they're just off by default. */
+    .day-header.weekend-header { background: rgba(255,255,255,0.015); }
+    .day-header.weekend-header .day-name { color: rgba(255,255,255,0.42); }
+    .day-header.weekend-header .day-date { color: rgba(255,255,255,0.32); }
+    .day-cell.weekend-cell {
+      background: repeating-linear-gradient(
+        45deg, rgba(255,255,255,0.012) 0 6px, transparent 6px 12px);
+    }
+    .day-cell.weekend-cell .off-mark {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.6px;
+      color: rgba(255,255,255,0.18); font-weight: 700;
+    }
     .day-header {
       background: rgba(255,255,255,0.05);
       border-right: 1px solid var(--border);
@@ -750,6 +765,14 @@
     <div class="day-name">Friday</div>
     <div class="day-date">8</div>
   </div>
+  <div class="day-header weekend-header">
+    <div class="day-name">Saturday</div>
+    <div class="day-date">9</div>
+  </div>
+  <div class="day-header weekend-header">
+    <div class="day-name">Sunday</div>
+    <div class="day-date">10</div>
+  </div>
 
   <!-- ══ MIKE ══════════════════════════════════════════════════ -->
   <div class="crew-label">
@@ -802,6 +825,8 @@
   <div class="day-cell">
     <div class="job-block" style="background: var(--j-heritage);">
       <div class="job-block-name">Heritage Bank</div>
+  <div class="day-cell weekend-cell"><span class="off-mark">off</span></div>
+  <div class="day-cell weekend-cell"><span class="off-mark">off</span></div>
       <div class="job-block-detail">Branch Sign Install #3</div>
       <div class="job-block-time">8:00 AM – 3:00 PM</div>
     </div>
@@ -861,6 +886,8 @@
   <div class="day-cell">
     <div class="job-block" style="background: var(--j-walgreen);">
       <div class="job-block-name">Walgreens #4712</div>
+  <div class="day-cell weekend-cell"><span class="off-mark">off</span></div>
+  <div class="day-cell weekend-cell"><span class="off-mark">off</span></div>
       <div class="job-block-detail">Sign-off &amp; Final Test</div>
       <div class="job-block-time">10:00 AM – 2:00 PM</div>
     </div>
@@ -922,6 +949,8 @@
   <div class="day-cell">
     <div class="job-block" style="background: var(--j-heritage);">
       <div class="job-block-name">Heritage Bank</div>
+  <div class="day-cell weekend-cell"><span class="off-mark">off</span></div>
+  <div class="day-cell weekend-cell"><span class="off-mark">off</span></div>
       <div class="job-block-detail">Final Sign-Off — 3 Sites</div>
       <div class="job-block-time">9:00 AM – 1:00 PM</div>
     </div>
@@ -974,6 +1003,8 @@
   <div class="day-cell last-row">
     <div class="job-block" style="background: var(--j-joliet);">
       <div class="job-block-name">Joliet Park District</div>
+  <div class="day-cell weekend-cell last-row"><span class="off-mark">off</span></div>
+  <div class="day-cell weekend-cell last-row"><span class="off-mark">off</span></div>
       <div class="job-block-detail">Wayfinding — Final + ADA</div>
       <div class="job-block-time">7:30 AM – 3:00 PM</div>
     </div>
@@ -1355,7 +1386,11 @@ document.querySelectorAll('.job-block').forEach(function(block) {
 
       var node = util.closest('.crew-label') || util.parentNode;
       var cells = [], n = node && node.nextElementSibling;
-      while (n && cells.length < 5 && n.classList.contains('day-cell')) {
+      /* Was hardcoded 5 — a leftover from the Mon–Fri grid that silently
+         ignored conflicts on the new Sat/Sun columns. Read the real week
+         length from the store. */
+      var WEEK_LEN = (window.SFStore && SFStore.DAYS ? SFStore.DAYS.length : 7);
+      while (n && cells.length < WEEK_LEN && n.classList.contains('day-cell')) {
         cells.push(n); n = n.nextElementSibling;
       }
 
@@ -1501,6 +1536,7 @@ document.querySelectorAll('.day-cell').forEach(function(cell) {
   table{max-width:100%;}
 }
 </style>
+  <script src="signflow-store.js?v=202608170046"></script>
 <script src="signflow-engine.js?v=202608160139"></script>
 </body>
 </html>

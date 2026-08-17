@@ -275,6 +275,90 @@
     }).sort(function (x, y) { return (y.value || 0) - (x.value || 0); });
   }
 
+  /* ── Repeat-business candidates ─────────────────────────────────────
+     Jobs already won and delivered, old enough that a second conversation
+     is reasonable rather than pushy. This is the cheapest work a sign shop
+     can win: the customer knows the crew, the pricing and the quality, so
+     there is no trust to build and usually no competitive bid.
+
+     Honest by construction:
+       • Only real closed-won records, each with its own `won` date.
+       • "Months ago" is computed from that date, never typed.
+       • The evidence that repeat work happens is the owner's own history:
+         SOURCES marked 'Repeat' are counted and reported, so the claim
+         "this works for you" is measured, not asserted. If his archive
+         holds no repeat wins, the panel says so instead of implying it.
+       • A candidate disappears once it reappears as a live job, so the
+         tool cannot tell him to chase work he is already doing.
+
+     COOL_OFF is a judgement call, not a measurement, and it is labelled as
+     one on screen: one quarter after delivery, a sign has stopped being
+     "just installed" and the customer's business has had time to change —
+     new location, new tenant, faded panel, a second site. A quarter is a
+     convention shops already think in, not a number tuned to make this
+     panel look busy.
+
+     Worth recording: the seeded archive only spans 21–105 days since won,
+     so a longer window (120d) yields zero candidates. That is a property of
+     demo seed data, not evidence the rule is wrong — on a real archive with
+     years of history the same rule surfaces far more. Resist the urge to
+     shrink the window until the list looks good; that is fitting the rule
+     to the fixture. */
+  var COOL_OFF_DAYS = 90;
+
+  function repeatCandidates() {
+    var S = global.SFStore;
+    if (!S) return { rows: [], repeatWins: 0, repeatValue: 0, coolOff: COOL_OFF_DAYS };
+
+    /* Anything currently live for this client means the conversation is
+       already happening — never recommend chasing it again. */
+    var liveClients = {};
+    S.all().forEach(function (j) {
+      if (!S.isWon(j) && j.stage !== 'Complete') {
+        liveClients[String(j.client || j.name).toLowerCase()] = true;
+      }
+    });
+
+    var closed = S.SEED_CLOSED || [];
+
+    /* The owner's own proof that repeat work converts. */
+    var repeatWins = closed.filter(function (j) {
+      return /repeat/i.test(j.source || '');
+    });
+
+    var rows = closed.map(function (j) {
+      var days = j.won ? S.daysBetween(S.parseISO(j.won), S.today()) : null;
+      return {
+        id: S.slug(j.name),
+        name: j.name,
+        client: j.client,
+        value: j.value || 0,
+        type: j.type,
+        source: j.source || '',
+        won: j.won,
+        daysSince: days,
+        monthsSince: days == null ? null : Math.floor(days / 30),
+        /* Was this customer already a repeat? Then he has direct evidence
+           this particular relationship renews. */
+        wasRepeat: /repeat/i.test(j.source || ''),
+        busy: !!liveClients[String(j.client || j.name).toLowerCase()]
+      };
+    }).filter(function (r) {
+      return r.daysSince != null && r.daysSince >= COOL_OFF_DAYS && !r.busy;
+    }).sort(function (x, y) {
+      /* Biggest first — a $47k customer is worth the call before a $3k one. */
+      return (y.value || 0) - (x.value || 0);
+    });
+
+    return {
+      rows: rows,
+      repeatWins: repeatWins.length,
+      repeatValue: repeatWins.reduce(function (t, j) { return t + (j.value || 0); }, 0),
+      closedTotal: closed.length,
+      coolOff: COOL_OFF_DAYS
+    };
+  }
+
   function liveScores(a) {
     var S = global.SFStore;
     a = a || analyse();
@@ -419,6 +503,8 @@
     insights: insights,
     liveScores: liveScores,
     dormant: dormant,
+    repeatCandidates: repeatCandidates,
+    COOL_OFF_DAYS: COOL_OFF_DAYS,
     valueBand: valueBand,
     money: money,
     median: median
