@@ -6,13 +6,13 @@
   <title>SignFlow — Job Pipeline</title>
   <!-- Drag layer + job persistence must exist before the inline board
        scripts run, so they load here rather than at the foot of the page. -->
-  <script src="signflow-store.js?v=202608160139"></script>
-<script src="signflow-dnd.js?v=202608160139"></script>
-  <script src="signflow-jobs.js?v=202608160139"></script>
+  <script src="signflow-store.js?v=202608171831"></script>
+<script src="signflow-dnd.js?v=202608171831"></script>
+  <script src="signflow-jobs.js?v=202608171831"></script>
   <!-- Must load before the inline page script: Slow Season Outreach reads
        SFConversions.dormant(). It used to sit after the inline block, so
        dormant() was undefined and the sidebar silently rendered empty. -->
-  <script src="signflow-conversions.js?v=202608160139"></script>
+  <script src="signflow-conversions.js?v=202608171831"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1269,8 +1269,12 @@
 <!-- ══ AI BANNER ════════════════════════════════════════════════ -->
 <div class="ai-banner">
   <span>⚡</span>
-  <strong>⚡ Smart Queue</strong> — 4 jobs can run in parallel today &nbsp;·&nbsp; 2 vendor windows open &nbsp;·&nbsp; 1 job can start earlier than scheduled
-  <em>&nbsp;·&nbsp; Est. 2.3 days saved this week</em>
+  <!-- Hardcoded "4 jobs · 2 vendor windows · 1 early start · 2.3 days saved"
+       lived here. The script below replaces this banner with the real
+       highest-impact job, but only once it runs — so on a slow load these
+       invented figures were the first thing on screen, and if the script
+       ever failed they were the only thing. Neutral placeholder instead. -->
+  <strong>⚡ Smart Queue</strong> — ranking today's work…
 </div>
 
 <!-- ══ SUB BAR ══════════════════════════════════════════════════ -->
@@ -1406,7 +1410,12 @@
       </div>
 
       <!-- Normal -->
-      <div class="card normal" data-job-type="outdoor" data-outsourced="logo-vectoring">
+      <!-- data-job-id is pinned because this card's visible name is longer
+           than the store's ("— Exterior Identity" vs "— Exterior"), and the
+           id is otherwise slugged from the name. The derived slug matched no
+           record, so this job was invisible to Smart Queue, its due date and
+           stage silently absent. Never let the id depend on display copy. -->
+      <div class="card normal" data-job-id="prairie-wind-storage-exterior" data-job-type="outdoor" data-outsourced="logo-vectoring">
         <div class="card-name">Prairie Wind Storage — Exterior Identity</div>
         <div class="card-client">Prairie Wind Self Storage</div>
         <div class="card-row">
@@ -1531,7 +1540,9 @@
       </div>
 
       <!-- Normal -->
-      <div class="card normal" data-job-type="outdoor" data-outsourced="neon-fabrication" data-vendor-sent="2026-08-02">
+      <!-- Pinned for the same reason as Prairie Wind above: the card reads
+           "— Façade Replacement", the store record is "— Façade". -->
+      <div class="card normal" data-job-id="walgreens-4712-fa-ade" data-job-type="outdoor" data-outsourced="neon-fabrication" data-vendor-sent="2026-08-02">
         <div class="card-name">Walgreens #4712 — Façade Replacement</div>
         <div class="card-client">Walgreens (National)</div>
         <div class="card-row">
@@ -1671,42 +1682,46 @@
 </div><!-- /main-content -->
 
 <!-- ══ STATS BAR ══════════════════════════════════════════════════ -->
+<!-- Every figure here was hand-typed and none of them moved when the board
+     did: "11 active" with 12 live jobs, "$328,450" pipeline against $187,100
+     of real open work, "2 overdue" when one job was late, and a hardcoded
+     "4 parallel" that ignored the crew grid. The last stat also collided with
+     the computed "Closed This Month" the engine appends, so the bar showed
+     that label twice with two different numbers.
+     Values are now filled by updateStatsBar() from the same engine Smart
+     Queue uses. The dashes are what shows if that engine fails — a visible
+     gap, never a comfortable wrong number. -->
 <div class="stats-bar">
   <div class="stat">
-    <div class="stat-val">11</div>
+    <div class="stat-val" id="sfstat-active">–</div>
     <div class="stat-label">Active Jobs</div>
   </div>
   <div class="stat-sep"></div>
   <div class="stat">
-    <div class="stat-val">$328,450</div>
+    <div class="stat-val" id="sfstat-value">–</div>
     <div class="stat-label">Pipeline Value</div>
   </div>
   <div class="stat-sep"></div>
   <div class="stat">
-    <div class="stat-val red">2</div>
+    <div class="stat-val red" id="sfstat-overdue">–</div>
     <div class="stat-label">Overdue</div>
   </div>
   <div class="stat-sep"></div>
   <div class="stat">
-    <div class="stat-val amber">5</div>
+    <div class="stat-val amber" id="sfstat-week">–</div>
     <div class="stat-label">Due This Week</div>
   </div>
   <div class="stat-sep"></div>
   <div class="stat">
-    <div class="stat-val red">4</div>
+    <div class="stat-val red" id="sfstat-parallel">–</div>
     <div class="stat-label">⚡ Parallel Today</div>
   </div>
   <div class="stat-sep"></div>
   <div class="stat">
-    <div class="stat-val amber">2</div>
+    <div class="stat-val amber" id="sfstat-cold">–</div>
     <div class="stat-label">❄️ Cold Quotes</div>
   </div>
-  <div class="stat-sep"></div>
-  <div class="stat">
-    <div class="stat-val green">$106,900</div>
-    <div class="stat-label">Closed This Month</div>
-  </div>
-  <div class="stats-meta">Last synced: 1 min ago · Garcia Sign &amp; Electric, Joliet IL</div>
+  <div class="stats-meta">Garcia Sign &amp; Electric, Joliet IL</div>
 </div>
 
 <script>
@@ -1809,7 +1824,49 @@
       ? window.SFConversions.dormant().length : 0;
     countEl.textContent = newI + ' new · ' + (total - newI) + ' active'
       + (dz ? ' · ' + dz + ' dormant' : '');
+    updateStatsBar();
   }
+
+  /* ── Stats bar ─────────────────────────────────────────────────
+     Same engine as Smart Queue, so the strip along the bottom and the
+     sidebar cannot disagree. Leaves the dashes in place if the engine is
+     missing rather than printing a plausible lie. Called from
+     updateJobCount() so it refreshes on every drag, edit and new job. */
+  function updateStatsBar() {
+    if (!window.SFStore || !window.SFConversions) return;
+    var set = function (id, v) {
+      var el = document.getElementById(id); if (el) el.textContent = v;
+    };
+    var live, jobs;
+    try { live = window.SFConversions.liveScores(); jobs = window.SFStore.all(); }
+    catch (e) { return; }
+
+    /* "Active" must mean the same thing as the Smart Queue capacity pool:
+       real open work, excluding Complete and cold/lost outreach. */
+    var active = jobs.filter(function (j) {
+      return j.stage !== 'Complete' && j.priority !== 'cold'
+          && j.priority !== 'lost' && !j.done;
+    });
+
+    set('sfstat-active', String(active.length));
+    set('sfstat-value', '$' + Number(live.openValue || 0).toLocaleString('en-US'));
+    set('sfstat-overdue', String(live.late.length));
+    set('sfstat-week', String(live.thisWeek.length));
+    set('sfstat-cold', String(jobs.filter(function (j) {
+      return j.priority === 'cold';
+    }).length));
+
+    /* Parallel capacity is the crew grid's answer, not a constant. */
+    var par = '–';
+    try {
+      if (window.SFQueue && window.SFQueue.build) {
+        var q = window.SFQueue.build();
+        if (q && typeof q.parallelNow === 'number') par = String(q.parallelNow);
+      }
+    } catch (e) { /* leave the dash */ }
+    set('sfstat-parallel', par);
+  }
+  window.SFStatsRefresh = updateStatsBar;
 
   /* ── Drag and Drop ────────────────────────────────────────
      Pointer-based via SFDnD. The old HTML5 dragstart/drop API was
@@ -2035,6 +2092,35 @@
     }
 
     SFJobs.hydrate('.card');
+
+    /* ── Re-derive the visible due chip from the store ──────────────────
+       The chips below are hand-authored HTML frozen at Aug 3 2026, but
+       SFStore shifts seed dates onto the live clock. Two weeks after the
+       anchor the board said "Overdue Aug 1" while Smart Queue — reading the
+       same job — said it installs next week. Same job, two dates, one
+       screen: the exact contradiction the live-clock fix was meant to end.
+
+       hydrate() only refreshes chips for cards with a SAVED edit, so
+       untouched seed cards kept their stale text. This covers the rest.
+       Peter's own edits still win: anything with a stored override is left
+       alone, and the store is the single source for both label and colour. */
+    if (window.SFStore && window.SFJobs) {
+      document.querySelectorAll('.board .card').forEach(function (c) {
+        var id = c.getAttribute('data-job-id');
+        var o  = SFJobs.getOverride(id);
+        if (o && o.dueISO) return;              /* hand-entered date wins */
+        var rec = SFStore.get(id);
+        if (!rec || !rec.due) return;
+        var chip = c.querySelector('.card-due');
+        if (!chip) return;
+        /* Complete jobs read "Closed …", not a deadline. */
+        if (rec.stage === 'Complete' || c.classList.contains('done')) return;
+        chip.textContent = SFStore.fmtDue(rec);
+        chip.classList.remove('soon', 'overdue');
+        var cls = SFStore.dueClass(rec);
+        if (cls) chip.classList.add(cls);
+      });
+    }
   }
 
   updateColBadges(); updateJobCount();
@@ -3403,10 +3489,10 @@
   /* calmer parallel grouping: soften the indented connector items */
   .ai-sidebar .queue-item[style*="border-left"]{ background:rgba(217,164,65,0.05); border-radius:0 10px 10px 0; }
 </style>
-<link rel="stylesheet" href="signflow-calm.css?v=202608160139">
-<script src="signflow-queue.js?v=202608160139"></script>
-<script src="signflow-engine.js?v=202608160139"></script>
-  <script src="signflow-hint.js?v=202608170135"></script>
+<link rel="stylesheet" href="signflow-calm.css?v=202608171831">
+<script src="signflow-queue.js?v=202608171831"></script>
+<script src="signflow-engine.js?v=202608171831"></script>
+  <script src="signflow-hint.js?v=202608171831"></script>
 
 </body>
 </html>
