@@ -6,13 +6,13 @@
   <title>SignFlow — Job Pipeline</title>
   <!-- Drag layer + job persistence must exist before the inline board
        scripts run, so they load here rather than at the foot of the page. -->
-  <script src="signflow-store.js?v=202608171902"></script>
-<script src="signflow-dnd.js?v=202608171902"></script>
-  <script src="signflow-jobs.js?v=202608171902"></script>
+  <script src="signflow-store.js?v=202608171915"></script>
+<script src="signflow-dnd.js?v=202608171915"></script>
+  <script src="signflow-jobs.js?v=202608171915"></script>
   <!-- Must load before the inline page script: Slow Season Outreach reads
        SFConversions.dormant(). It used to sit after the inline block, so
        dormant() was undefined and the sidebar silently rendered empty. -->
-  <script src="signflow-conversions.js?v=202608171902"></script>
+  <script src="signflow-conversions.js?v=202608171915"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1381,7 +1381,7 @@
           <span class="card-due">Due Aug 10</span>
         </div>
         <div class="card-row">
-          <span class="parallel-badge">⚡ PARALLEL</span>
+          
           <div class="card-value">$7,200</div>
         </div>
         <div class="card-notified">📨 Client notified Aug 2</div>
@@ -1476,7 +1476,7 @@
           <span class="card-due overdue">Overdue Aug 1</span>
         </div>
         <div class="card-row">
-          <span class="parallel-badge">⚡ PARALLEL</span>
+          
           <div class="card-value">$9,200</div>
         </div>
         <div class="card-notified">📨 Client notified Jul 30</div>
@@ -1495,7 +1495,7 @@
           <span class="card-due soon">Due Aug 6</span>
         </div>
         <div class="card-row">
-          <span class="parallel-badge">⚡ PARALLEL</span>
+          
           <div class="card-value">$6,400</div>
         </div>
         <div class="card-notified">📨 Client notified Aug 2</div>
@@ -1603,7 +1603,7 @@
           <span class="card-due soon">Install Aug 5</span>
         </div>
         <div class="card-row">
-          <span class="parallel-badge">⚡ PARALLEL</span>
+          
           <div class="card-value">$11,200</div>
         </div>
         <div class="card-notified">📨 Client notified Aug 1</div>
@@ -1721,8 +1721,14 @@
   </div>
   <div class="stat-sep"></div>
   <div class="stat">
-    <div class="stat-val red" id="sfstat-parallel">–</div>
-    <div class="stat-label">⚡ Parallel Today</div>
+    <!-- Capacity is not an alarm. `.stat-val.red` is reserved for overdue
+         (see signflow-calm.css), so "4 jobs can run at once" — good news —
+         was rendering in alert red. Also renamed: this counts CREW jobs
+         that can run simultaneously, while the ⚡ PARALLEL badges on the
+         board mark jobs needing NO crew. Same word, two different numbers
+         (4 vs 8) on one screen. One question, one number, one owner. -->
+    <div class="stat-val green" id="sfstat-parallel">–</div>
+    <div class="stat-label">👷 Crew Jobs At Once</div>
   </div>
   <div class="stat-sep"></div>
   <div class="stat">
@@ -1765,7 +1771,9 @@
         var row = card.querySelector('.card-row:last-of-type') || card;
         var s = document.createElement('span');
         s.className = 'parallel-badge';
-        s.textContent = '⚡ PARALLEL';
+        /* Named for what it actually means. "PARALLEL" collided with the
+           "Parallel Today" stat, which counts a different set. */
+        s.textContent = '⚡ NO CREW NEEDED';
         row.insertBefore(s, row.firstChild);
       } else if (!isParallel && badge) {
         badge.remove();
@@ -3553,10 +3561,10 @@
   /* calmer parallel grouping: soften the indented connector items */
   .ai-sidebar .queue-item[style*="border-left"]{ background:rgba(217,164,65,0.05); border-radius:0 10px 10px 0; }
 </style>
-<link rel="stylesheet" href="signflow-calm.css?v=202608171902">
-<script src="signflow-queue.js?v=202608171902"></script>
-<script src="signflow-engine.js?v=202608171902"></script>
-  <script src="signflow-hint.js?v=202608171902"></script>
+<link rel="stylesheet" href="signflow-calm.css?v=202608171915">
+<script src="signflow-queue.js?v=202608171915"></script>
+<script src="signflow-engine.js?v=202608171915"></script>
+  <script src="signflow-hint.js?v=202608171915"></script>
 
 </body>
 </html>
