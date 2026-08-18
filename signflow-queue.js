@@ -203,20 +203,56 @@
 
     var free = freeDays();
 
-    /* Parallel capacity: how many crew-needing jobs could actually start
-       alongside each other, bounded by real free crew. Never a guess. */
+    /* ── Parallel capacity ───────────────────────────────────────
+       This is the answer to "how many jobs can move at once", so it has to
+       be counted on a specific day — crew are free on Tuesday or they are
+       not. It previously took the BEST day of the week and printed that
+       under a stat labelled "⚡ Parallel Today", so a week with one quiet
+       Friday reported four crew free on a Monday when nobody was free.
+
+       Now: today's actual column, with the week's best kept separately for
+       the sidebar copy, which does talk about the week. */
     var st = resState();
-    var maxFree = 0;
-    free.forEach(function (day) {
-      var n = CREW.filter(function (c) {
+
+    function freeCrewOn(day) {
+      return CREW.filter(function (c) {
         var v = availOf(st, c, day);
         return v !== 'busy' && v !== 'off';
       }).length;
+    }
+
+    /* 'partial' is real but not a whole crew member. Counted separately so
+       the copy can hedge instead of rounding a half-day up to a full one. */
+    function partialCrewOn(day) {
+      return CREW.filter(function (c) {
+        return availOf(st, c, day) === 'partial';
+      }).length;
+    }
+
+    var DAY_KEYS = days();
+    /* JS getDay(): 0=Sun. The grid starts on Mon. */
+    var jsDay = S.today().getDay();
+    var todayKey = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][jsDay];
+    /* Only trust it if the grid actually has that column. */
+    if (DAY_KEYS.indexOf(todayKey) === -1) todayKey = null;
+
+    var maxFree = 0;
+    free.forEach(function (day) {
+      var n = freeCrewOn(day);
       if (n > maxFree) maxFree = n;
     });
 
-    /* Bounded by real free crew AND by how many jobs actually need them. */
-    var parallelNow = Math.min(maxFree, crewAll.length);
+    var freeToday    = todayKey ? freeCrewOn(todayKey) : 0;
+    var partialToday = todayKey ? partialCrewOn(todayKey) : 0;
+
+    /* Bounded by real free crew today AND by how many jobs actually need
+       them — four idle crew with one crew job is capacity of one. */
+    var parallelNow = Math.min(freeToday, crewAll.length);
+
+    /* Jobs needing the lift. Surfaced as a fact, not enforced as a cap:
+       nothing in this app records how many lifts the shop owns, so
+       asserting "only one can run" would be inventing a constraint. */
+    var liftToday = crewAll.filter(function (j) { return j.needs === 'lift'; }).length;
 
     return {
       today: crewJobs.slice(0, 3),
@@ -225,6 +261,13 @@
       freeDays: free,
       maxFreeCrew: maxFree,
       parallelNow: parallelNow,
+      /* Today-scoped, for anything labelled "today". */
+      todayKey: todayKey,
+      freeToday: freeToday,
+      partialToday: partialToday,
+      isNonWorkingDay: !!todayKey && freeToday === 0,
+      liftToday: liftToday,
+      crewCount: CREW.length,
       /* Capacity-scoped counts — these reconcile against liveJobs. */
       needsOnSite: crewAll.length,
       atVendorCount: waitingAll.length,
@@ -398,19 +441,66 @@
         'Based on typical pace per stage, not your measured history yet.');
     }
 
-    /* ── Capacity, from the grid Peter edits ── */
+    /* ── Capacity, from the grid Peter edits ─────────────────────────
+       Says "today" only where it means today. The old copy printed the
+       week's best day under a today-shaped headline. */
+    var lift = q.liftToday > 1
+      ? ' ' + q.liftToday + ' of them need the lift.' : '';
+    var partial = q.partialToday
+      ? ' (' + q.partialToday + ' only part of the day)' : '';
+
     if (q.parallelNow > 1) {
       html += callout('rgba(249,168,37,0.08)', 'rgba(249,168,37,0.25)', '#F9A825',
-        '⚡ ' + q.parallelNow + ' JOBS CAN RUN AT THE SAME TIME',
-        q.maxFreeCrew + ' of ' + global.SFQueue.CREW.length + ' crew are free on '
-          + (q.freeDays.length ? q.freeDays.join(', ') : 'no days this week')
-          + '. That is how many crew jobs can move in parallel.',
+        '⚡ ' + q.parallelNow + ' JOBS CAN RUN AT ONCE TODAY',
+        q.freeToday + ' of ' + q.crewCount + ' crew are free today' + partial
+          + ', and ' + q.needsOnSite + ' open job'
+          + (q.needsOnSite === 1 ? ' needs' : 's need') + ' crew.'
+          + ' The smaller of those two is your real limit.' + lift,
         'From your crew availability grid — change it and this updates.');
-    } else if (q.freeDays.length === 0) {
-      html += callout('rgba(194,69,63,0.07)', 'rgba(194,69,63,0.22)', '#C2453F',
-        '⛔ NO CREW CAPACITY THIS WEEK',
-        'Every crew member is marked busy all five days. Nothing new can start '
-          + 'until something frees up.', null);
+    } else if (q.parallelNow === 1) {
+      html += callout('rgba(249,168,37,0.06)', 'rgba(249,168,37,0.20)', '#F9A825',
+        '⚡ ONE CREW JOB AT A TIME TODAY',
+        q.freeToday + ' of ' + q.crewCount + ' crew free today' + partial
+          + '. Office work and vendor jobs below still run alongside it.' + lift,
+        'From your crew availability grid — change it and this updates.');
+    } else if (q.needsOnSite === 0) {
+      html += callout('rgba(102,187,106,0.06)', 'rgba(102,187,106,0.18)', '#66BB6A',
+        '✓ NO CREW WORK OUTSTANDING',
+        'Nothing open needs the crew right now — everything live is office '
+          + 'work or sitting with a vendor.', null);
+    } else {
+      /* Capacity of zero has three different meanings and they are not
+         interchangeable: a non-working day is normal, a fully booked
+         weekday is a squeeze, and a dead week is a real problem. Painting
+         a Saturday bright red would train Peter to ignore the colour. */
+      var noneAllWeek = q.freeDays.length === 0;
+      /* NOTE: the renderer is a separate IIFE from the maths above — `S`
+         does not exist here. Reach the store through `global`. */
+      var store  = global.SFStore;
+      var offDay = (store && store.isWeekend && q.todayKey)
+        ? store.isWeekend(q.todayKey) : false;
+      var waiting = q.needsOnSite + ' job' + (q.needsOnSite === 1 ? '' : 's');
+
+      if (offDay && !noneAllWeek) {
+        html += callout('rgba(255,255,255,0.04)', 'rgba(255,255,255,0.12)',
+          'rgba(255,255,255,0.6)',
+          '🛌 NOT A WORKING DAY',
+          'Nobody is scheduled today, so no crew work moves. ' + waiting
+            + ' waiting.'
+            + (q.freeDays.length ? ' Next working day: ' + q.freeDays[0] + '.' : ''),
+          'Click a Sa/Su dot in the grid above to open the day up.');
+      } else {
+        html += callout('rgba(194,69,63,0.07)', 'rgba(194,69,63,0.22)', '#C2453F',
+          noneAllWeek ? '⛔ NO CREW CAPACITY THIS WEEK' : '⛔ NO CREW FREE TODAY',
+          noneAllWeek
+            ? ('Every crew member is marked busy or off all week, with '
+               + waiting + ' waiting on them.')
+            : ('All ' + q.crewCount + ' crew are busy or off today, with '
+               + waiting + ' waiting on them.'
+               + (q.freeDays.length
+                   ? ' Next free: ' + q.freeDays.join(', ') + '.' : '')),
+          'From your crew availability grid — change it and this updates.');
+      }
     }
 
     /* ── Vendor-side work: real parallelism, no invented dates ── */
@@ -472,6 +562,10 @@
 
     /* Re-attach the action buttons and Why? toggles the engine owns. */
     if (global.SFQueueRefresh) global.SFQueueRefresh();
+    /* The ⚡ PARALLEL badges are derived from the same capacity model, so
+       refresh them here — otherwise a stage change updates the sidebar
+       while the board still shows the old badges. */
+    if (global.SFTagParallel) { try { global.SFTagParallel(); } catch (e) {} }
   }
 
   global.SFQueueRender = render;

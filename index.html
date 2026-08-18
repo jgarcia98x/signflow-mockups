@@ -6,13 +6,13 @@
   <title>SignFlow — Job Pipeline</title>
   <!-- Drag layer + job persistence must exist before the inline board
        scripts run, so they load here rather than at the foot of the page. -->
-  <script src="signflow-store.js?v=202608171840"></script>
-<script src="signflow-dnd.js?v=202608171840"></script>
-  <script src="signflow-jobs.js?v=202608171840"></script>
+  <script src="signflow-store.js?v=202608171902"></script>
+<script src="signflow-dnd.js?v=202608171902"></script>
+  <script src="signflow-jobs.js?v=202608171902"></script>
   <!-- Must load before the inline page script: Slow Season Outreach reads
        SFConversions.dormant(). It used to sit after the inline block, so
        dormant() was undefined and the sidebar silently rendered empty. -->
-  <script src="signflow-conversions.js?v=202608171840"></script>
+  <script src="signflow-conversions.js?v=202608171902"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1659,21 +1659,29 @@
            and four invented callouts that never changed. -->
       <div id="sf-queue-computed"></div>
 
-      <!-- ── SLOW SEASON OUTREACH ── -->
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:rgba(79,195,247,0.85);">❄️ Slow Season Outreach</div>
-          <div style="font-size:9px;color:var(--text-dim);" id="outreach-count"></div>
+      <!-- ── OUTREACH LIVES IN SMART NUDGE ──────────────────────────
+           Slow Season Outreach used to render here, which split one job
+           across two tools: Smart Queue answered "what work do I do today"
+           and then, underneath, "who should I call". Chasing a cold quote is
+           not today's work order — it is a follow-up, which is exactly what
+           Smart Nudge on the Customers tab is for. Two tools answering
+           overlapping questions is a design bug, so every outreach list now
+           lives there and the two cannot disagree.
+
+           The elements below are kept as hidden hooks because the follow-up
+           code further down this page still queries them; it no-ops cleanly.
+           The pointer keeps the feature discoverable instead of vanishing. -->
+      <div id="sf-outreach-moved" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:rgba(79,195,247,0.85);margin-bottom:6px;">❄️ Cold quotes &amp; follow-ups</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.50);line-height:1.55;">
+          Outreach moved to <strong style="color:rgba(255,255,255,0.80);">Smart Nudge</strong>
+          so this queue stays a work order.
+          <a href="customers.html" style="color:rgba(79,195,247,0.95);text-decoration:none;font-weight:700;">Open Smart Nudge →</a>
         </div>
-        <div id="slow-season-list"></div>
-        <button id="send-all-followups" style="
-          display:none;width:100%;margin-top:8px;
-          background:rgba(79,195,247,0.12);border:1px solid rgba(79,195,247,0.35);
-          border-radius:7px;color:rgba(79,195,247,0.90);font-size:10px;font-weight:700;
-          padding:6px;cursor:pointer;letter-spacing:0.2px;transition:background .15s;">
-          📬 Queue All Follow-ups
-        </button>
       </div>
+      <div id="slow-season-list" hidden></div>
+      <span id="outreach-count" hidden></span>
+      <button id="send-all-followups" hidden></button>
 
     </div>
   </div>
@@ -1728,10 +1736,50 @@
 (function () {
   'use strict';
 
-  /* ── Tag parallel cards with .parallel class ─────── */
-  document.querySelectorAll('.card').forEach(function(card) {
-    if (card.querySelector('.parallel-badge')) card.classList.add('parallel');
-  });
+  /* ── ⚡ PARALLEL badge, derived ───────────────────────────────
+     The badge used to be hand-typed into four cards and never moved, so it
+     openly contradicted the engine that computes parallelism. Two of the
+     four badged jobs (Downtown Diner, Village Tap) are office work, and a
+     third (Northside Gym) is sitting at a vendor — none of them are the
+     crew-contention case the badge is meant to mark, while genuinely
+     parallel crew jobs like Summit Tech Park had no badge at all.
+
+     "Parallel" here means one thing: this job can move today without
+     competing for Peter's crew. That is exactly what the queue already
+     computes, so read it from there rather than from the markup.
+     Re-run after a drag or edit, since stage changes can flip it. */
+  function tagParallel() {
+    if (!window.SFStore || !window.SFQueue) return;
+    document.querySelectorAll('.board .card').forEach(function (card) {
+      var j = SFStore.get(card.getAttribute('data-job-id'));
+      var badge = card.querySelector('.parallel-badge');
+      /* Complete/cold/lost consume nothing and are not "running" at all. */
+      var eligible = j && j.stage !== 'Complete'
+        && j.priority !== 'cold' && j.priority !== 'lost' && !j.done;
+      /* Runs alongside crew work: office work, or out at a vendor. */
+      var isParallel = !!eligible
+        && (SFQueue.atVendor(j) || !SFQueue.needsCrew(j));
+
+      card.classList.toggle('parallel', isParallel);
+      if (isParallel && !badge) {
+        var row = card.querySelector('.card-row:last-of-type') || card;
+        var s = document.createElement('span');
+        s.className = 'parallel-badge';
+        s.textContent = '⚡ PARALLEL';
+        row.insertBefore(s, row.firstChild);
+      } else if (!isParallel && badge) {
+        badge.remove();
+      }
+      if (isParallel) {
+        var b2 = card.querySelector('.parallel-badge');
+        if (b2) b2.title = SFQueue.atVendor(j)
+          ? 'At a vendor — moves without using your crew'
+          : 'Office work — needs no crew, so it runs alongside install work';
+      }
+    });
+  }
+  window.SFTagParallel = tagParallel;
+  tagParallel();
 
   /* ── Dynamic Date ─────────────────────────────────── */
   (function () {
@@ -3505,10 +3553,10 @@
   /* calmer parallel grouping: soften the indented connector items */
   .ai-sidebar .queue-item[style*="border-left"]{ background:rgba(217,164,65,0.05); border-radius:0 10px 10px 0; }
 </style>
-<link rel="stylesheet" href="signflow-calm.css?v=202608171840">
-<script src="signflow-queue.js?v=202608171840"></script>
-<script src="signflow-engine.js?v=202608171840"></script>
-  <script src="signflow-hint.js?v=202608171840"></script>
+<link rel="stylesheet" href="signflow-calm.css?v=202608171902">
+<script src="signflow-queue.js?v=202608171902"></script>
+<script src="signflow-engine.js?v=202608171902"></script>
+  <script src="signflow-hint.js?v=202608171902"></script>
 
 </body>
 </html>
