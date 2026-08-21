@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- Boot veil bootstrap: must run before the schedule grid parses. Phones only. -->
+<script>(function(){if(!window.matchMedia||!window.matchMedia('(max-width:700px)').matches)return;
+var s=document.createElement('style');s.textContent='#sf-veil{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 90% at 50% 12%,#241318 0%,#160c10 55%,#100a0d 100%);opacity:1;transition:opacity .24s ease}#sf-veil.gone{opacity:0;pointer-events:none}.sf-veil-in{text-align:center;transform:translateY(-6px)}.sf-veil-mark{display:flex;gap:5px;justify-content:center;align-items:flex-end;height:38px;margin:0 auto 16px}.sf-vb{width:9px;border-radius:3px;background:#C2453F;animation:sfvb 1.05s cubic-bezier(.4,0,.3,1) infinite;animation-delay:calc(var(--i)*.11s);height:12px;opacity:.35}.sf-vb:nth-child(3){background:#D9694F}.sf-vb:nth-child(4){background:rgba(255,255,255,.28)}@keyframes sfvb{0%{height:10px;opacity:.3}45%{height:34px;opacity:1}100%{height:10px;opacity:.3}}.sf-veil-t{font-size:19px;font-weight:700;letter-spacing:.2px;color:#fff;margin-bottom:5px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.sf-veil-s{font-size:12px;color:rgba(255,255,255,.5);letter-spacing:.3px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}@media(prefers-reduced-motion:reduce){.sf-vb{animation:none;height:24px;opacity:.7}}';
+document.head.appendChild(s);
+var v=document.createElement('div');v.id='sf-veil';
+v.innerHTML='<div class="sf-veil-in"><div class="sf-veil-mark"><span class="sf-vb" style="--i:0"></span><span class="sf-vb" style="--i:1"></span><span class="sf-vb" style="--i:2"></span><span class="sf-vb" style="--i:3"></span></div><div class="sf-veil-t">SignFlow</div><div class="sf-veil-s">Arranging your board</div></div>';
+document.documentElement.appendChild(v);
+setTimeout(function(){var e=document.getElementById('sf-veil');if(e){e.classList.add('gone');setTimeout(function(){e.remove&&e.remove();},300);}},2600);})();</script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <script src="signflow-dnd.js?v=202608171915"></script>
@@ -1538,5 +1546,6 @@ document.querySelectorAll('.day-cell').forEach(function(cell) {
 </style>
   <script src="signflow-store.js?v=202608171915"></script>
 <script src="signflow-engine.js?v=202608171915"></script>
+<script src="signflow-mobile.js?v=202608211552"></script>
 </body>
 </html>
